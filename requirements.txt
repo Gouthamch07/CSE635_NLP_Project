@@ -1,0 +1,52 @@
+# ---- Core ----
+python-dotenv>=1.0.1
+pydantic>=2.7
+pydantic-settings>=2.3
+tenacity>=8.5
+httpx>=0.27
+orjson>=3.10
+
+# ---- Crawling / Scraping ----
+crawl4ai>=0.4.24
+playwright>=1.45
+beautifulsoup4>=4.12
+lxml>=5.2
+trafilatura>=1.12
+pypdf>=4.3
+pdfplumber>=0.11
+
+# ---- LLM / Embeddings ----
+google-cloud-aiplatform>=1.67
+vertexai>=1.67
+google-generativeai>=0.7
+openai>=1.40                 # optional fallback
+sentence-transformers>=3.0
+rank-bm25>=0.2.2
+tiktoken>=0.7
+
+# ---- Vector + Graph stores ----
+pinecone-client>=5.0
+neo4j>=5.22
+
+# ---- RAG / Rerank ----
+FlagEmbedding>=1.2           # BGE reranker (cross-encoder)
+cohere>=5.6                  # optional rerank fallback
+
+# ---- Agent framework ----
+langgraph>=0.2
+langchain-core>=0.3
+langchain-google-vertexai>=2.0
+
+# ---- UI ----
+streamlit>=1.38
+streamlit-chat>=0.1.1
+
+# ---- Evaluation ----
+ragas>=0.2
+datasets>=2.20
+pandas>=2.2
+tqdm>=4.66
+
+# ---- Dev ----
+pytest>=8.3
+ruff>=0.6
