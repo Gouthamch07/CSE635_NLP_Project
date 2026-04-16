@@ -11,7 +11,7 @@ department, grounded in the department's website plus linked PDFs/syllabi.
 | `ub_cse_bot/kg` | Entity & relation extraction (Course / Faculty / Program / Lab) + Neo4j loader |
 | `ub_cse_bot/embeddings` | Vertex `text-embedding-004`, **lazy** disk cache, **contextual** (breadcrumb-prefixed) chunking |
 | `ub_cse_bot/rag` | Pinecone dense + BM25 sparse + **RRF fusion** + lexical rerank + **BGE cross-encoder** rerank |
-| `ub_cse_bot/agent` | Tool-using orchestrator over Vertex Gemini 2.5 Pro with KG tools + retrieve tool |
+| `ub_cse_bot/agent` | Tool-using orchestrator over Vertex Gemini 3.1 Pro with KG tools + retrieve tool |
 | `ub_cse_bot/guardrails` | Two-stage (keyword + LLM) scope classifier with polite redirects |
 | `ub_cse_bot/dialogue` | Short-term rolling memory + opt-in personalized memory (facts + answer cache) |
 | `ub_cse_bot/ui` | Streamlit chat UI with a live retrieval/rerank log panel |
