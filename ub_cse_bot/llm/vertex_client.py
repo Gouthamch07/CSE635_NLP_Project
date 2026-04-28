@@ -55,13 +55,18 @@ class VertexGemini:
         self,
         messages: Sequence[LLMMessage],
         temperature: float = 0.2,
-        max_output_tokens: int = 1024,
+        max_output_tokens: int = 4096,
         tools: list | None = None,
     ) -> str:
         self._load()
         from vertexai.generative_models import GenerationConfig
 
-        cfg = GenerationConfig(temperature=temperature, max_output_tokens=max_output_tokens)
+        cfg_kwargs = {"temperature": temperature, "max_output_tokens": max_output_tokens}
+        try:
+            cfg = GenerationConfig(thinking_config={"thinking_budget": 0}, **cfg_kwargs)
+        except TypeError:
+            cfg = GenerationConfig(**cfg_kwargs)
+
         t0 = time.time()
         resp = self._model.generate_content(
             self._to_contents(messages),
@@ -70,9 +75,24 @@ class VertexGemini:
         )
         log.info("gemini.generate dt=%.2fs", time.time() - t0)
         try:
-            return resp.text
+            text = resp.text
+            if text:
+                return text
         except Exception:
-            return "".join(p.text for p in resp.candidates[0].content.parts if getattr(p, "text", None))
+            pass
+        try:
+            parts = resp.candidates[0].content.parts
+            joined = "".join(getattr(p, "text", "") or "" for p in parts)
+            if joined:
+                return joined
+        except Exception as exc:
+            log.warning("gemini.generate empty response: %s", exc)
+        try:
+            finish = resp.candidates[0].finish_reason
+            log.warning("gemini.generate finish_reason=%s", finish)
+        except Exception:
+            pass
+        return ""
 
     def stream(
         self,

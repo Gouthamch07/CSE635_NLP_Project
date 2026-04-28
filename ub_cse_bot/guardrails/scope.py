@@ -22,7 +22,33 @@ _SMALLTALK = (
     "good afternoon", "bye", "goodbye", "how are you", "what's up",
 )
 _OUT_BLOCKLIST = (
-    "pizza", "weather", "stock", "crypto", "movie", "lyrics", "recipe",
+    "pizza", "restaurant", "food", "weather", "stock", "crypto",
+    "movie", "lyrics", "recipe", "gym", "bar", "nightlife", "hotel",
+    "flight", "uber", "lyft", "sports", "nba", "nfl",
+)
+
+# topic-specific friendly redirects: what to suggest the user check instead
+_REDIRECT_HINTS = (
+    (("pizza", "restaurant", "food", "bar", "nightlife"),
+     "🍕 For local Buffalo food spots, **Yelp** or **Google Maps** are great — "
+     "[yelp.com/buffalo](https://www.yelp.com/buffalo)."),
+    (("weather",),
+     "☀️ For Buffalo weather, try **weather.com** or the Apple Weather app."),
+    (("stock", "crypto"),
+     "📈 For markets, **Yahoo Finance** or **Google Finance** will have what you need."),
+    (("movie", "lyrics"),
+     "🎬 For movies and music, try **IMDb**, **Rotten Tomatoes**, or **Genius**."),
+    (("recipe",),
+     "🍳 For recipes, **AllRecipes** or **NYT Cooking** are solid."),
+    (("gym",),
+     "💪 For UB rec / off-campus gyms, check **buffalo.edu/recreation** or "
+     "Google Maps for nearby options."),
+    (("hotel",),
+     "🏨 For Buffalo lodging, try **booking.com** or **Google Hotels**."),
+    (("flight", "uber", "lyft"),
+     "✈️ For travel, try **Google Flights**, **Uber**, or **Lyft** apps directly."),
+    (("sports", "nba", "nfl"),
+     "🏈 For sports scores, **ESPN** or **The Athletic** are the go-to."),
 )
 
 
@@ -48,7 +74,7 @@ class ScopeClassifier:
             return ScopeDecision(
                 label="out_of_scope",
                 reason="matched out-of-scope keyword",
-                redirect=_redirect(),
+                redirect=_redirect(t),
             )
         if any(re.search(rf"\b{re.escape(k)}\b", t) for k in _SMALLTALK) and len(t) < 40:
             return ScopeDecision(label="small_talk", reason="short greeting / pleasantry")
@@ -89,14 +115,32 @@ class ScopeClassifier:
         return ScopeDecision(
             label=label,  # type: ignore[arg-type]
             reason="llm-classified",
-            redirect=_redirect() if label == "out_of_scope" else "",
+            redirect=_redirect(query.lower()) if label == "out_of_scope" else "",
         )
 
 
-def _redirect() -> str:
+def _redirect(query: str = "") -> str:
+    """Friendly redirect: acknowledge the question, suggest a relevant external
+    resource, then steer back to UB CSE."""
+    hint = ""
+    for keys, suggestion in _REDIRECT_HINTS:
+        if any(k in query for k in keys):
+            hint = suggestion
+            break
+
+    if hint:
+        return (
+            f"That's a bit outside my lane — I'm the **UB CSE assistant**, so I stick to "
+            f"programs, courses, faculty, and research at the department.\n\n"
+            f"{hint}\n\n"
+            f"But if you have any UB CSE question — a course, a professor, a degree "
+            f"requirement — I'd love to help with that!"
+        )
+
     return (
-        "I'm focused on the University at Buffalo CSE department — "
-        "programs, courses, faculty, and research. "
-        "Ask me about a CSE course, degree requirement, or faculty member, "
-        "and I'll do my best to help."
+        "That's outside what I cover — I'm the **UB CSE assistant**, focused on "
+        "the department's programs, courses, faculty, and research.\n\n"
+        "For general questions, **Google** is your friend. "
+        "But if you have a CSE-specific question — a course like CSE 574, "
+        "a faculty member, or degree requirements — I'm all yours!"
     )

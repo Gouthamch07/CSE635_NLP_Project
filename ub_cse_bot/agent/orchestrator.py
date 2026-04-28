@@ -111,13 +111,13 @@ class UBCSEAgent:
 
         # ---- plan + (optional) tool calls
         plan_prompt = self._build_plan_prompt(user_query)
-        plan_text = self.llm.generate(plan_prompt, temperature=0.1, max_output_tokens=512)
+        plan_text = self.llm.generate(plan_prompt, temperature=0.1, max_output_tokens=2048)
         tool_calls, tool_results = self._run_tools(plan_text, user_query)
 
         # ---- final grounded answer
         final_msgs = self._build_answer_prompt(user_query, tool_results)
         ttft_start = time.time()
-        answer = self.llm.generate(final_msgs, temperature=0.2, max_output_tokens=1024)
+        answer = self.llm.generate(final_msgs, temperature=0.2, max_output_tokens=4096)
         ttft = (time.time() - ttft_start) * 1000
 
         # stash trace (first retrieve tool's trace, if any)

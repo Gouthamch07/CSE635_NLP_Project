@@ -1,7 +1,10 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
 data/raw/
 data/processed/
 data/pdf/
@@ -13,3 +16,13 @@ data/eval_out/
 *.pkl
 *.jsonl
 !data/eval/*.example
+.DS_Store
+*.log
+.claude/
+.idea/
+.vscode/
+# service-account / cred files
+*-sa.json
+service-account*.json
+*credentials*.json
+*application_default_credentials*.json

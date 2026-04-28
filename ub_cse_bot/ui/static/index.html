@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UB CSE Assistant — School of Engineering and Applied Sciences</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body>
+
+  <!-- ───────── Official UB header bar ───────── -->
+  <header class="ub-header">
+    <div class="ub-header-inner">
+      <a class="ub-flag" href="https://www.buffalo.edu" target="_blank" rel="noopener" aria-label="University at Buffalo">
+        <div class="ub-flag-shape">
+          <div class="ub-flag-mark">UB</div>
+          <div class="ub-flag-text">
+            <span>University</span>
+            <span>at Buffalo</span>
+            <span class="ub-flag-tag">The State University of New York</span>
+          </div>
+        </div>
+      </a>
+
+      <h1 class="ub-school">
+        School of Engineering<br/>and Applied Sciences
+      </h1>
+
+      <div class="ub-header-actions">
+        <button id="theme-toggle" class="header-icon-btn" title="Toggle theme" aria-label="Toggle theme">
+          <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <a class="apply-btn" href="https://engineering.buffalo.edu/computer-science-engineering.html" target="_blank" rel="noopener">CSE Department ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ───────── Secondary nav ───────── -->
+  <nav class="subnav">
+    <div class="subnav-inner">
+      <ul class="subnav-tabs">
+        <li><a href="https://engineering.buffalo.edu/computer-science-engineering.html" target="_blank">Our Department</a></li>
+        <li><a href="https://engineering.buffalo.edu/computer-science-engineering/graduate.html" target="_blank">Academics</a></li>
+        <li><a href="https://engineering.buffalo.edu/computer-science-engineering/research.html" target="_blank">Research &amp; Faculty</a></li>
+        <li class="active"><a href="#">CSE Assistant</a></li>
+      </ul>
+      <div class="subnav-actions">
+        <span class="status-chip"><span class="status-dot"></span>Online</span>
+        <button id="trace-toggle" class="subnav-btn" title="Retrieval log">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+            <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+          <span>Retrieval log</span>
+        </button>
+        <button id="clear-btn" class="subnav-btn primary" title="New chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>New chat</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ───────── Main grid ───────── -->
+  <div class="page">
+    <aside class="page-side">
+      <div class="side-card">
+        <h3 class="side-title">CSE Assistant</h3>
+        <ul class="side-list">
+          <li class="active">Ask the chatbot</li>
+          <li><a href="https://engineering.buffalo.edu/computer-science-engineering/graduate/degrees-and-programs.html" target="_blank">Programs &amp; degrees</a></li>
+          <li><a href="https://engineering.buffalo.edu/computer-science-engineering/people/faculty-directory.html" target="_blank">Faculty directory</a></li>
+          <li><a href="https://engineering.buffalo.edu/computer-science-engineering/research.html" target="_blank">Research areas</a></li>
+          <li><a href="https://engineering.buffalo.edu/home/academics/grad/policies.html" target="_blank">Graduate policies</a></li>
+          <li><a href="https://engineering.buffalo.edu/computer-science-engineering/admissions.html" target="_blank">Admissions</a></li>
+        </ul>
+      </div>
+      <a class="side-cta apply" href="https://engineering.buffalo.edu/computer-science-engineering/admissions.html" target="_blank">Apply Now</a>
+      <a class="side-cta info"  href="https://engineering.buffalo.edu/computer-science-engineering.html" target="_blank">Request More Information</a>
+      <a class="side-cta plain" href="https://engineering.buffalo.edu/home/about/contact.html" target="_blank">Contact Us</a>
+    </aside>
+
+    <main class="page-main">
+      <div class="breadcrumb">
+        <a href="#">School of Engineering and Applied Sciences</a>
+        <span>›</span>
+        <a href="#">Computer Science &amp; Engineering</a>
+        <span>›</span>
+        <strong>CSE Assistant</strong>
+      </div>
+
+      <!-- Welcome -->
+      <section id="welcome" class="welcome">
+        <h2 class="page-title">Ask anything about UB CSE</h2>
+        <p class="lede">
+          A grounded chatbot for the University at Buffalo's Department of Computer Science
+          and Engineering. Ask about programs, courses, faculty, research labs, and policies —
+          answers are retrieved from the official department website.
+        </p>
+
+        <div class="prompt-grid">
+          <button class="prompt-card" data-prompt="What MS programs does UB CSE offer and what are the credit requirements?">
+            <div class="prompt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></div>
+            <div class="prompt-text">
+              <span class="prompt-title">MS programs</span>
+              <span class="prompt-desc">Compare MS tracks and credit requirements</span>
+            </div>
+            <span class="prompt-arrow">→</span>
+          </button>
+
+          <button class="prompt-card" data-prompt="Tell me about CSE 574 — Machine Learning. What does it cover?">
+            <div class="prompt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+            <div class="prompt-text">
+              <span class="prompt-title">Course details</span>
+              <span class="prompt-desc">Syllabus-level overview of CSE 574</span>
+            </div>
+            <span class="prompt-arrow">→</span>
+          </button>
+
+          <button class="prompt-card" data-prompt="Which research labs at UB CSE work on artificial intelligence?">
+            <div class="prompt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6l-5 8a2 2 0 0 0 1.7 3h12.6A2 2 0 0 0 20 16l-5-8V2"/><path d="M8 2h8M7 16h10"/></svg></div>
+            <div class="prompt-text">
+              <span class="prompt-title">Research labs</span>
+              <span class="prompt-desc">AI / ML labs and faculty</span>
+            </div>
+            <span class="prompt-arrow">→</span>
+          </button>
+
+          <button class="prompt-card" data-prompt="What are the requirements to graduate from the BS in Computer Science?">
+            <div class="prompt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="14" x2="15" y2="14"/><line x1="9" y1="18" x2="13" y2="18"/></svg></div>
+            <div class="prompt-text">
+              <span class="prompt-title">Degree requirements</span>
+              <span class="prompt-desc">BS / MS / PhD graduation criteria</span>
+            </div>
+            <span class="prompt-arrow">→</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Thread -->
+      <section id="thread" class="thread hidden"></section>
+
+      <!-- Composer -->
+      <div class="composer-wrap">
+        <form id="composer" class="composer">
+          <textarea
+            id="input"
+            rows="1"
+            placeholder="Ask about UB CSE programs, courses, faculty, research..."
+            autocomplete="off"
+          ></textarea>
+          <button id="send" type="submit" class="send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M13 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </form>
+        <p class="footnote">
+          Pinecone dense + BM25 sparse · BGE cross-encoder rerank · Vertex Gemini · grounded in <strong>buffalo.edu</strong>
+        </p>
+      </div>
+    </main>
+  </div>
+
+  <!-- ───────── Trace drawer ───────── -->
+  <aside id="trace-drawer" class="trace-drawer">
+    <header class="trace-header">
+      <div>
+        <h3>Retrieval pipeline</h3>
+        <p class="trace-sub">Per-stage chunks &amp; scores</p>
+      </div>
+      <button id="trace-close" class="header-icon-btn" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </header>
+    <div id="trace-body" class="trace-body">
+      <div class="empty-trace">
+        <p>Send a message to see how chunks flow through BM25, dense retrieval, RRF fusion, and reranking.</p>
+      </div>
+    </div>
+  </aside>
+  <div id="trace-scrim" class="trace-scrim"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
