@@ -23,8 +23,15 @@ class VertexEmbedder:
         import vertexai
         from vertexai.language_models import TextEmbeddingModel
 
-        vertexai.init(project=self.s.google_cloud_project, location=self.s.google_cloud_location)
+        location = self.s.google_cloud_embed_location or self.s.google_cloud_location
+        vertexai.init(project=self.s.google_cloud_project, location=location)
         self._model = TextEmbeddingModel.from_pretrained(self.model_name)
+        log.info(
+            "vertex.embedder loaded model=%s project=%s location=%s",
+            self.model_name,
+            self.s.google_cloud_project,
+            location,
+        )
 
     def embed(
         self,
@@ -45,3 +52,12 @@ class VertexEmbedder:
 
     def embed_query(self, text: str) -> list[float]:
         return self.embed([text], task_type="RETRIEVAL_QUERY")[0]
+
+    def warmup(self) -> None:
+        """Force Vertex SDK init + a real round-trip so the first user query
+        doesn't pay auth / gRPC / model-resolution cost (~10s on cold start).
+        """
+        self._load()
+        from vertexai.language_models import TextEmbeddingInput
+
+        self._model.get_embeddings([TextEmbeddingInput(text="warmup", task_type="RETRIEVAL_QUERY")])

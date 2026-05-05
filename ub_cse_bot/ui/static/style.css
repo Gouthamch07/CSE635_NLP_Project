@@ -839,3 +839,25 @@ a:hover { text-decoration: underline; }
   .prompt-grid { grid-template-columns: 1fr; }
   .trace-drawer { width: 100vw; }
 }
+
+.personalize-prompt .bubble { border-left: 3px solid var(--accent, #4a86e8); }
+.personalize-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.personalize-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  background: var(--bg-2, rgba(255,255,255,0.04));
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.personalize-btn:hover:not(:disabled) { background: var(--bg-3, rgba(255,255,255,0.08)); }
+.personalize-btn.yes { border-color: #2e7d32; }
+.personalize-btn.no  { border-color: #b71c1c; }
+.personalize-btn:disabled { opacity: 0.5; cursor: default; }
+.personalize-confirm { margin-top: 10px; font-size: 0.9em; color: var(--text-2, rgba(255,255,255,0.7)); }

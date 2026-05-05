@@ -73,3 +73,6 @@ class LazyEmbedder:
         vec = self.embedder.embed_query(text)
         self._put(key, vec)
         return vec
+
+    def warmup(self) -> None:
+        self.embedder.warmup()

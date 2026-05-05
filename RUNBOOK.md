@@ -11,7 +11,7 @@ Operational guide for running, maintaining, and extending the chatbot. Pairs wit
 | Pinecone (dense, 768-d Vertex `text-embedding-004`) | ✅ 3,230 records, namespace `default` | UB CSE web pages + selected `cse.buffalo.edu/~prof/` syllabi |
 | BM25 sparse (local pickle) | ✅ `data/processed/bm25.pkl` | Refit on every `add_url.py` call |
 | Neo4j Aura (KG) | ⚠️ Offline | `kg_store=None` is passed to the agent; KG tools degrade gracefully ([tools.py:61](ub_cse_bot/agent/tools.py:61)). Bonus features ("course → related labs") return empty. |
-| Vertex Gemini 2.5 Pro (LLM) | ✅ via ADC | `thinking_budget=0` set so `max_output_tokens` isn't eaten by internal thinking |
+| Vertex Gemini 2.5 Flash-Lite (LLM) | ✅ via ADC | `thinking_budget=0` to fully disable thinking → lowest TTFT in the Gemini family. Quality is sufficient for RAG-grounded factual answers |
 | Cross-encoder reranker | ✅ sentence-transformers fallback | `BAAI/bge-reranker-v2-m3` if `FlagEmbedding` is installed |
 | Custom FastAPI + HTML UI | ✅ `ub_cse_bot/ui/server.py` | UB-branded; runs on port 8000 |
 | Streamlit UI (legacy) | ✅ `ub_cse_bot/ui/app.py` | Still works, kept as fallback |
@@ -30,6 +30,17 @@ export PINECONE_INDEX="ub-cse-chatbot"
 export PINECONE_REGION="us-east-1"
 export GOOGLE_CLOUD_PROJECT="uplifted-valor-474623-c9"
 export GOOGLE_CLOUD_LOCATION="us-central1"
+export GOOGLE_CLOUD_EMBED_LOCATION="us-central1"
+export WARM_START_ON_STARTUP=true
+export ENABLE_LLM_PLANNER=false
+export CROSS_ENCODER_CANDIDATE_K=12
+export ENABLE_LATENCY_DEBUG=true
+export VERTEX_MODEL=gemini-2.5-flash-lite
+export VERTEX_THINKING_BUDGET=0
+export ANSWER_CONTEXT_K=6
+export ANSWER_CONTEXT_CHARS=1400
+export ANSWER_MAX_OUTPUT_TOKENS=1600
+export CONCISE_ANSWERS=false
 # GOOGLE_APPLICATION_CREDENTIALS NOT set — using ADC
 
 # launch
@@ -196,7 +207,7 @@ Add more questions to the `.jsonl` files for richer eval — one JSON object per
 | `pinecone-client` is renamed error | Package moved to `pinecone` | `pip uninstall -y pinecone-client && pip install pinecone` |
 | `invalid_grant: Bad Request` from Vertex | ADC refresh token expired (>7 days) | `gcloud auth application-default login` |
 | `aiplatform.googleapis.com requires a quota project` | ADC has no quota project | `gcloud auth application-default set-quota-project <PROJECT_ID>` |
-| Bot answer cut off mid-sentence | Gemini 2.5 Pro thinking ate `max_output_tokens` | Already fixed: `thinking_budget=0` + 4096 tokens in [vertex_client.py](ub_cse_bot/llm/vertex_client.py) |
+| Bot answer cut off mid-sentence | Pro's mandatory thinking ate `max_output_tokens` | Switched to Gemini 2.5 Flash with `thinking_budget=0` + 4096 tokens in [vertex_client.py](ub_cse_bot/llm/vertex_client.py) |
 | Trace drawer shows "0 hits" everywhere | Frontend reading wrong field | Already fixed in [app.js](ub_cse_bot/ui/static/app.js) — reads `stage.scores`, joins with `trace.hits` for titles |
 | Wall of `torchvision` warnings on streamlit | Streamlit's file watcher walks every transformers submodule | Use `--server.fileWatcherType=none` or just ignore (cosmetic) |
 | `cse.buffalo.edu/~prof/...` pages not in answers | Different subdomain than the original crawl scope | Use `scripts/add_url.py` per page, or re-crawl with `cse.buffalo.edu` in `CRAWL_ALLOWED_DOMAINS` |
@@ -216,7 +227,7 @@ ub_cse_bot/
 ├── rag/bm25.py                ← BM25Index (load/save pickle)
 ├── rag/pinecone_store.py      ← Pinecone wrapper
 ├── rag/reranker.py            ← LexicalReranker + CrossEncoderReranker (BGE / ST fallback)
-├── llm/vertex_client.py       ← Gemini wrapper (thinking_budget=0, 4096 tokens)
+├── llm/vertex_client.py       ← Gemini wrapper (Flash, thinking_budget=0, 4096 tokens)
 ├── embeddings/lazy.py         ← Disk-cached embedder
 ├── embeddings/contextual.py   ← Heading-aware contextual chunker
 ├── ui/server.py               ← FastAPI app for the chatbot
@@ -247,6 +258,14 @@ scripts/
 | Dialogue state / follow-ups | ✅ done | `ConversationMemory(max_turns=12)` |
 | **BONUS** personalized memory toggle | ✅ done | `PersonalMemory` + `enabled_for(user_id)` |
 | RAGAS faithfulness / Hit@K / latency / robustness | ⚠️ harness exists, not yet run | `pip install ragas datasets && python scripts/run_eval.py` |
-| TTFT < 2 s | ⚠️ currently ~8–16 s (cold cross-encoder) | Warm-start the cross-encoder at app boot, or switch to Gemini Flash |
+| TTFT < 2 s | ⚠️ needs fresh measurement | Warm-start is enabled at app boot; demo path skips the extra planner LLM call by default. Use a Flash model if Pro is still too slow. |
 
-To close the TTFT gap quickly: warm the cross-encoder during FastAPI startup so the first user query doesn't pay the model-load cost.
+Latency switches:
+- `WARM_START_ON_STARTUP=true` primes Vertex, Pinecone, embeddings, and cross-encoder before the first user query.
+- `ENABLE_LLM_PLANNER=false` uses the deterministic retrieve-first route, saving one Gemini call per normal CSE question.
+- `CROSS_ENCODER_CANDIDATE_K=12` keeps cross-encoder reranking but scores fewer candidates than the old 30-candidate path.
+- `GOOGLE_CLOUD_EMBED_LOCATION=us-central1` keeps query embeddings regional even if `GOOGLE_CLOUD_LOCATION=global` is used for Gemini 3.1 models.
+- `ENABLE_LATENCY_DEBUG=true` logs stage timings (`latency.retrieve`, `latency.tool`, `latency.answer`, `latency.agent`) and returns `latency_trace` in `/chat`.
+- `/chat/stream` streams answer tokens to the browser, so the visible TTFT is measured when the first token arrives instead of after the full JSON response completes.
+- `VERTEX_MODEL=gemini-2.5-flash` + `VERTEX_THINKING_BUDGET=0` disables thinking entirely on Flash, giving sub-second TTFT. (Gemini 2.5 Pro rejects `thinking_budget=0` — its valid range is 128–32,768. Gemini 3 Pro uses `thinking_level=LOW|MEDIUM|HIGH` instead, with no `thinking_budget`.)
+- `ANSWER_CONTEXT_K=6`, `ANSWER_CONTEXT_CHARS=1400`, and `ANSWER_MAX_OUTPUT_TOKENS=1600` keep answer quality reasonable while still bounding prompt/output size.

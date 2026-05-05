@@ -19,6 +19,7 @@ pdfplumber>=0.11
 google-cloud-aiplatform>=1.67
 vertexai>=1.67
 google-generativeai>=0.7
+google-genai>=1.0
 openai>=1.40                 # optional fallback
 sentence-transformers>=3.0
 rank-bm25>=0.2.2
