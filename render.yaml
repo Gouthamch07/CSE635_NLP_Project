@@ -9,7 +9,7 @@ services:
     plan: free
     region: oregon
     branch: main
-    buildCommand: pip install --upgrade pip && pip install -r requirements.runtime.txt
+    buildCommand: pip install --upgrade pip && pip uninstall -y pinecone-client pinecone || true && pip install -r requirements.runtime.txt
     startCommand: PYTHONPATH=. uvicorn ub_cse_bot.ui.server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     envVars:
