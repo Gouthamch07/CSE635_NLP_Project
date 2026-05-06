@@ -1,0 +1,48 @@
+# Keep the build context small + the image lean.
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.DS_Store
+.idea
+.vscode
+.claude
+.env
+.env.*
+!.env.example
+
+# Eval + dev artifacts (not needed in the production image)
+eval
+results
+scripts
+tests
+notebooks
+docker
+
+# Build artifacts that the buildpacks would otherwise pick up
+node_modules
+dist
+build
+*.egg-info
+
+# Crawled corpus / large caches the runtime doesn't need
+data/raw
+data/pdf
+data/emb_cache
+data/memory
+data/eval_out
+data/processed/*
+!data/processed/bm25.pkl
+
+# Docs / project files we don't ship
+README.md
+RUNBOOK.md
+RENDER_DEPLOY.md
+*.pptx
+
+# Render-specific files (Cloud Run uses Dockerfile)
+render.yaml
