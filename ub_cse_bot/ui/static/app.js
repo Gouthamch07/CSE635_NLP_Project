@@ -162,14 +162,6 @@ function appendBot(text, meta) {
   wrap.className = "msg bot";
   let html = `<div class="bubble">${renderMarkdown(text)}</div>`;
   if (meta) {
-    const pills = [];
-    if (meta.scope) {
-      pills.push(`<span class="meta-pill scope-${meta.scope}">${meta.scope.replace(/_/g, " ")}</span>`);
-    }
-    if (Number.isFinite(meta.ttft_ms))  pills.push(`<span class="meta-pill">ttft ${Math.round(meta.ttft_ms)}ms</span>`);
-    if (Number.isFinite(meta.total_ms)) pills.push(`<span class="meta-pill">${Math.round(meta.total_ms)}ms total</span>`);
-    if (pills.length) html += `<div class="meta-row">${pills.join("")}</div>`;
-
     html += buildKgRowHtml(meta.kg_facts);
     html += buildSourcesRowHtml(meta.sources);
   }
@@ -196,19 +188,6 @@ function updateBotShell(wrap, text) {
 function finalizeBotShell(wrap, meta) {
   if (!meta) return;
   wrap.querySelectorAll(".meta-row,.sources-row,.kg-row").forEach((el) => el.remove());
-
-  const pills = [];
-  if (meta.scope) {
-    pills.push(`<span class="meta-pill scope-${meta.scope}">${meta.scope.replace(/_/g, " ")}</span>`);
-  }
-  if (Number.isFinite(meta.ttft_ms))  pills.push(`<span class="meta-pill">ttft ${Math.round(meta.ttft_ms)}ms</span>`);
-  if (Number.isFinite(meta.total_ms)) pills.push(`<span class="meta-pill">${Math.round(meta.total_ms)}ms total</span>`);
-  if (pills.length) {
-    const row = document.createElement("div");
-    row.className = "meta-row";
-    row.innerHTML = pills.join("");
-    wrap.appendChild(row);
-  }
 
   const kgHtml = buildKgRowHtml(meta.kg_facts);
   if (kgHtml) {
