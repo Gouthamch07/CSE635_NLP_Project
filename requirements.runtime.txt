@@ -22,5 +22,5 @@ google-genai>=1.0
 # ---- Retrieval ----
 sentence-transformers>=3.0    # cross-encoder reranker fallback (small ms-marco-MiniLM)
 rank-bm25>=0.2.2
-pinecone-client>=5.0
+pinecone>=5.0                 # renamed from `pinecone-client`; old name now errors at runtime
 neo4j>=5.22

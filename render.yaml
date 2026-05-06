@@ -19,7 +19,7 @@ services:
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: WARM_START_ON_STARTUP
-        value: "true"
+        value: "false"          # let port bind fast; warm lazily on first /chat request
       - key: ENABLE_KG_RUNTIME
         value: "true"
       - key: ENABLE_LLM_PLANNER
