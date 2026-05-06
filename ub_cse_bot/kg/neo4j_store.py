@@ -113,6 +113,11 @@ class Neo4jStore:
                     """
                     s.run(q, rows=grp)
 
+    # ---------- health ----------
+    def verify_connectivity(self) -> None:
+        with self.session() as s:
+            s.run("RETURN 1 AS ok").single()
+
     # ---------- queries used by agent tools ----------
     def related_faculty_for_course(self, code: str) -> list[dict]:
         q = """
@@ -137,3 +142,96 @@ class Neo4jStore:
         """
         with self.session() as s:
             return [r["code"] for r in s.run(q, code=code)]
+
+    # ---------- entity-index population ----------
+    def list_all_courses(self) -> list[dict]:
+        q = "MATCH (c:Course) RETURN c.code AS code, c.title AS title, c.url AS url"
+        with self.session() as s:
+            return [r.data() for r in s.run(q)]
+
+    def list_all_faculty(self) -> list[dict]:
+        q = (
+            "MATCH (f:Faculty) "
+            "RETURN f.name AS name, f.email AS email, f.office AS office, f.url AS url"
+        )
+        with self.session() as s:
+            return [r.data() for r in s.run(q)]
+
+    def list_all_labs(self) -> list[dict]:
+        q = "MATCH (l:Lab) RETURN l.name AS name, l.area AS area, l.url AS url"
+        with self.session() as s:
+            return [r.data() for r in s.run(q)]
+
+    def list_all_programs(self) -> list[dict]:
+        q = "MATCH (p:Program) RETURN p.name AS name, p.level AS level, p.url AS url"
+        with self.session() as s:
+            return [r.data() for r in s.run(q)]
+
+    # ---------- entity-detail lookups ----------
+    def faculty_info(self, name: str) -> dict:
+        q = """
+        MATCH (f:Faculty {name: $name})
+        OPTIONAL MATCH (f)-[:MEMBER_OF_LAB]->(l:Lab)
+        OPTIONAL MATCH (f)-[:TAUGHT_BY]->(c:Course)
+        RETURN f.name AS name, f.email AS email, f.office AS office, f.url AS url,
+               collect(DISTINCT {name: l.name, area: l.area, url: l.url}) AS labs,
+               collect(DISTINCT {code: c.code, title: c.title}) AS courses
+        """
+        with self.session() as s:
+            rec = s.run(q, name=name).single()
+            if not rec:
+                return {}
+            data = rec.data()
+            data["labs"] = [l for l in data.get("labs", []) if l.get("name")]
+            data["courses"] = [c for c in data.get("courses", []) if c.get("code")]
+            return data
+
+    def lab_info(self, name: str) -> dict:
+        q = """
+        MATCH (l:Lab {name: $name})
+        OPTIONAL MATCH (l)<-[:MEMBER_OF_LAB]-(f:Faculty)
+        RETURN l.name AS name, l.area AS area, l.url AS url,
+               collect(DISTINCT {name: f.name, email: f.email}) AS members
+        """
+        with self.session() as s:
+            rec = s.run(q, name=name).single()
+            if not rec:
+                return {}
+            data = rec.data()
+            data["members"] = [m for m in data.get("members", []) if m.get("name")]
+            return data
+
+    def program_info(self, name: str) -> dict:
+        q = """
+        MATCH (p:Program {name: $name})
+        OPTIONAL MATCH (c:Course)-[:PART_OF_PROGRAM]->(p)
+        RETURN p.name AS name, p.level AS level, p.url AS url,
+               count(DISTINCT c) AS course_count
+        """
+        with self.session() as s:
+            rec = s.run(q, name=name).single()
+            return rec.data() if rec else {}
+
+    # ---------- topic / area lookups ----------
+    def faculty_by_area(self, area: str) -> list[dict]:
+        q = """
+        MATCH (f:Faculty)-[:MEMBER_OF_LAB]->(l:Lab)
+        WHERE toLower(l.area) CONTAINS toLower($area)
+           OR toLower(l.name) CONTAINS toLower($area)
+        RETURN DISTINCT f.name AS name, f.email AS email,
+               l.name AS lab, l.area AS area
+        ORDER BY f.name
+        """
+        with self.session() as s:
+            return [r.data() for r in s.run(q, area=area)]
+
+    def labs_by_area(self, area: str) -> list[dict]:
+        q = """
+        MATCH (l:Lab)
+        WHERE toLower(l.area) CONTAINS toLower($area)
+           OR toLower(l.name) CONTAINS toLower($area)
+        RETURN l.name AS name, l.area AS area, l.url AS url
+        ORDER BY l.name
+        """
+        with self.session() as s:
+            return [r.data() for r in s.run(q, area=area)]

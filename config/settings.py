@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     google_cloud_project: str = Field(default="", alias="GOOGLE_CLOUD_PROJECT")
     google_cloud_location: str = Field(default="us-central1", alias="GOOGLE_CLOUD_LOCATION")
     google_cloud_embed_location: str = Field(default="", alias="GOOGLE_CLOUD_EMBED_LOCATION")
-    vertex_model: str = Field(default="gemini-2.5-flash-lite", alias="VERTEX_MODEL")
+    vertex_model: str = Field(default="gemini-3-flash-preview", alias="VERTEX_MODEL")
     vertex_embed_model: str = Field(default="text-embedding-004", alias="VERTEX_EMBED_MODEL")
     vertex_thinking_budget: int = Field(default=0, alias="VERTEX_THINKING_BUDGET")
     vertex_thinking_level: str = Field(default="", alias="VERTEX_THINKING_LEVEL")
@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
     neo4j_password: str = Field(default="password", alias="NEO4J_PASSWORD")
     neo4j_database: str = Field(default="neo4j", alias="NEO4J_DATABASE")
+    enable_kg_runtime: bool = Field(default=True, alias="ENABLE_KG_RUNTIME")
 
     # Crawler
     crawl_root: str = Field(

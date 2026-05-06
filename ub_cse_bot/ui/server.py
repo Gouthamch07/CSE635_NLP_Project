@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from config import get_settings
 from ub_cse_bot.agent import UBCSEAgent
 from ub_cse_bot.dialogue import ConversationMemory, PersonalMemory
+from ub_cse_bot.kg.neo4j_store import Neo4jStore
 from ub_cse_bot.rag.hybrid import HybridRetriever
 from ub_cse_bot.utils.logging import get_logger
 
@@ -39,6 +40,7 @@ class ChatResponse(BaseModel):
     total_ms: float
     latency_trace: dict[str, float]
     sources: list[dict[str, Any]]
+    kg_facts: list[dict[str, Any]] = []
     retrieval_trace: dict[str, Any] | None
     tool_calls: list[dict[str, Any]]
 
@@ -51,8 +53,17 @@ def _get_agent() -> UBCSEAgent:
     if _agent is None:
         s = get_settings()
         retriever = HybridRetriever.from_disk(s.data_dir / "processed" / "bm25.pkl")
+        kg_store: Neo4jStore | None = None
+        if s.enable_kg_runtime:
+            try:
+                kg_store = Neo4jStore()
+                log.info("kg.driver constructed (verification deferred to warmup)")
+            except Exception as exc:
+                log.warning("kg.driver construction failed; KG disabled: %s", exc)
+                kg_store = None
         _agent = UBCSEAgent(
             retriever=retriever,
+            kg_store=kg_store,
             memory=ConversationMemory(max_turns=12),
             personal=PersonalMemory(Path(s.memory_store_path)),
             user_id="anon",
@@ -90,6 +101,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         total_ms=resp.total_ms,
         latency_trace=resp.latency_trace,
         sources=resp.sources or [],
+        kg_facts=resp.kg_facts or [],
         retrieval_trace=resp.retrieval_trace,
         tool_calls=resp.tool_calls or [],
     )

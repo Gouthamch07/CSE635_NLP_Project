@@ -135,6 +135,28 @@ function appendUser(text) {
   thread.scrollTop = thread.scrollHeight;
 }
 
+function buildSourcesRowHtml(sources) {
+  if (!sources || !sources.length) return "";
+  const chips = sources.slice(0, 5).map((s) => {
+    const label = escapeHtml(s.title || s.section || s.url || "source");
+    const url = s.url ? escapeHtml(s.url) : "";
+    const inner = `<span class="source-num">${s.index}</span><span>${label}</span>`;
+    return url
+      ? `<a class="source-chip" href="${url}" target="_blank" rel="noopener">${inner}</a>`
+      : `<span class="source-chip">${inner}</span>`;
+  }).join("");
+  return `<div class="sources-row">${chips}</div>`;
+}
+
+function buildKgRowHtml(kgFacts) {
+  if (!kgFacts || !kgFacts.length) return "";
+  const chips = kgFacts.slice(0, 6).map((f) => {
+    const label = escapeHtml(f.label || f.kind || "fact");
+    return `<span class="kg-chip" title="from Neo4j knowledge graph"><span class="kg-tag">KG</span><span>${label}</span></span>`;
+  }).join("");
+  return `<div class="kg-row">${chips}</div>`;
+}
+
 function appendBot(text, meta) {
   const wrap = document.createElement("div");
   wrap.className = "msg bot";
@@ -148,17 +170,8 @@ function appendBot(text, meta) {
     if (Number.isFinite(meta.total_ms)) pills.push(`<span class="meta-pill">${Math.round(meta.total_ms)}ms total</span>`);
     if (pills.length) html += `<div class="meta-row">${pills.join("")}</div>`;
 
-    if (meta.sources && meta.sources.length) {
-      const chips = meta.sources.slice(0, 5).map((s) => {
-        const label = escapeHtml(s.title || s.section || s.url || "source");
-        const url = s.url ? escapeHtml(s.url) : "";
-        const inner = `<span class="source-num">${s.index}</span><span>${label}</span>`;
-        return url
-          ? `<a class="source-chip" href="${url}" target="_blank" rel="noopener">${inner}</a>`
-          : `<span class="source-chip">${inner}</span>`;
-      }).join("");
-      html += `<div class="sources-row">${chips}</div>`;
-    }
+    html += buildKgRowHtml(meta.kg_facts);
+    html += buildSourcesRowHtml(meta.sources);
   }
   wrap.innerHTML = html;
   thread.appendChild(wrap);
@@ -182,7 +195,7 @@ function updateBotShell(wrap, text) {
 
 function finalizeBotShell(wrap, meta) {
   if (!meta) return;
-  wrap.querySelectorAll(".meta-row,.sources-row").forEach((el) => el.remove());
+  wrap.querySelectorAll(".meta-row,.sources-row,.kg-row").forEach((el) => el.remove());
 
   const pills = [];
   if (meta.scope) {
@@ -197,18 +210,18 @@ function finalizeBotShell(wrap, meta) {
     wrap.appendChild(row);
   }
 
-  if (meta.sources && meta.sources.length) {
-    const row = document.createElement("div");
-    row.className = "sources-row";
-    row.innerHTML = meta.sources.slice(0, 5).map((s) => {
-      const label = escapeHtml(s.title || s.section || s.url || "source");
-      const url = s.url ? escapeHtml(s.url) : "";
-      const inner = `<span class="source-num">${s.index}</span><span>${label}</span>`;
-      return url
-        ? `<a class="source-chip" href="${url}" target="_blank" rel="noopener">${inner}</a>`
-        : `<span class="source-chip">${inner}</span>`;
-    }).join("");
-    wrap.appendChild(row);
+  const kgHtml = buildKgRowHtml(meta.kg_facts);
+  if (kgHtml) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = kgHtml;
+    wrap.appendChild(tmp.firstChild);
+  }
+
+  const srcHtml = buildSourcesRowHtml(meta.sources);
+  if (srcHtml) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = srcHtml;
+    wrap.appendChild(tmp.firstChild);
   }
   thread.scrollTop = thread.scrollHeight;
 }
@@ -243,6 +256,7 @@ function renderTrace(trace) {
     "cross_encoder": "Cross-encoder rerank",
     "cross_encoder_rerank": "Cross-encoder rerank",
     "ce": "Cross-encoder rerank",
+    "knowledge_graph": "Neo4j knowledge graph",
   };
 
   // Build id -> {title, section, url} map from final hits
@@ -342,6 +356,7 @@ async function sendMessage(text) {
             ttft_ms: event.ttft_ms,
             total_ms: event.total_ms,
             sources: event.sources,
+            kg_facts: event.kg_facts,
           });
           renderTrace(event.retrieval_trace);
         } else if (event.type === "error") {

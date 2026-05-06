@@ -14,6 +14,7 @@ from ..kg.neo4j_store import Neo4jStore
 from ..llm.vertex_client import LLMMessage, VertexGemini
 from ..rag.hybrid import HybridRetriever
 from ..utils.logging import get_logger
+from .entity_index import EntityIndex
 from .tools import ToolCall, ToolResult, build_tool_registry
 
 log = get_logger(__name__)
@@ -49,6 +50,7 @@ class AgentResponse:
     ttft_ms: float = 0.0
     total_ms: float = 0.0
     sources: list[dict] = field(default_factory=list)
+    kg_facts: list[dict] = field(default_factory=list)
     latency_trace: dict[str, float] = field(default_factory=dict)
 
 
@@ -77,6 +79,7 @@ class UBCSEAgent:
         self.llm = llm or VertexGemini()
         self.kg_store = kg_store
         self.tools = build_tool_registry(retriever, kg_store)
+        self.entity_index = EntityIndex()
         self.memory = memory or ConversationMemory()
         self.personal = personal
         self.user_id = user_id
@@ -154,17 +157,9 @@ class UBCSEAgent:
         latency["answer_total_ms"] = answer_total
         ttft = answer_ready_ms + answer_ttft
 
-        # stash trace (first retrieve tool's trace, if any)
-        retrieval_trace = None
-        sources = []
-        for tr in tool_results:
-            if tr.name == "retrieve" and tr.ok:
-                retrieval_trace = tr.trace
-                sources = [
-                    {"index": i + 1, "url": h["url"], "title": h["title"], "section": h["section"]}
-                    for i, h in enumerate(tr.payload.get("hits", []))
-                ]
-                break
+        retrieval_trace, sources = self._sources_from_tool_results(tool_results)
+        kg_facts = self._kg_facts_from_tool_results(tool_results)
+        retrieval_trace = self._build_trace_with_kg(retrieval_trace, kg_facts)
 
         self.memory.add("user", user_query)
         self.memory.add("model", answer)
@@ -179,6 +174,7 @@ class UBCSEAgent:
             tool_calls=[{"name": t.name, "args": t.args} for t in tool_calls],
             retrieval_trace=retrieval_trace,
             sources=sources,
+            kg_facts=kg_facts,
             ttft_ms=ttft,
             total_ms=(time.perf_counter() - t0) * 1000,
         )
@@ -304,6 +300,8 @@ class UBCSEAgent:
 
         final_msgs = self._build_answer_prompt(user_query, tool_results)
         retrieval_trace, sources = self._sources_from_tool_results(tool_results)
+        kg_facts = self._kg_facts_from_tool_results(tool_results)
+        retrieval_trace = self._build_trace_with_kg(retrieval_trace, kg_facts)
         answer_ready_ms = (time.perf_counter() - t0) * 1000
         latency["answer_ready_ms"] = answer_ready_ms
 
@@ -311,6 +309,7 @@ class UBCSEAgent:
             "type": "start",
             "scope": scope.label,
             "sources": sources,
+            "kg_facts": kg_facts,
             "retrieval_trace": retrieval_trace,
             "tool_calls": [{"name": t.name, "args": t.args} for t in tool_calls],
             "latency_trace": latency,
@@ -368,6 +367,7 @@ class UBCSEAgent:
             "total_ms": latency["total_ms"],
             "latency_trace": latency,
             "sources": sources,
+            "kg_facts": kg_facts,
             "retrieval_trace": retrieval_trace,
             "tool_calls": [{"name": t.name, "args": t.args} for t in tool_calls],
         }
@@ -419,6 +419,10 @@ class UBCSEAgent:
 
     def _retrieve_directly(self, user_query: str) -> tuple[list[ToolCall], list[ToolResult]]:
         calls = [ToolCall(name="retrieve", args={"query": user_query, "k": self.s.rerank_top_k})]
+        if self.kg_store and self.s.enable_kg_runtime:
+            for intent in self.entity_index.detect(user_query):
+                if intent.tool in self.tools:
+                    calls.append(ToolCall(name=intent.tool, args=intent.args))
         return calls, self._execute_tool_calls(calls)
 
     def _execute_tool_calls(self, calls: list[ToolCall]) -> list[ToolResult]:
@@ -441,6 +445,36 @@ class UBCSEAgent:
                     for i, h in enumerate(tr.payload.get("hits", []))
                 ]
         return None, []
+
+    def _kg_facts_from_tool_results(
+        self, tool_results: list[ToolResult]
+    ) -> list[dict]:
+        facts: list[dict] = []
+        for tr in tool_results:
+            if tr.name in _KG_TOOL_NAMES:
+                _, chip = _format_kg_result(tr)
+                if chip:
+                    facts.append(chip)
+        return facts
+
+    def _build_trace_with_kg(
+        self,
+        retrieval_trace: dict | None,
+        kg_facts: list[dict],
+    ) -> dict | None:
+        if not kg_facts:
+            return retrieval_trace
+        kg_stage = {
+            "stage": "knowledge_graph",
+            "scores": [[f["label"], 1.0] for f in kg_facts],
+        }
+        if retrieval_trace is None:
+            return {"query": "", "stages": [kg_stage], "hits": []}
+        trace = dict(retrieval_trace)
+        stages = list(trace.get("stages", []))
+        stages.append(kg_stage)
+        trace["stages"] = stages
+        return trace
 
     def _generate_answer(self, final_msgs: list[LLMMessage]) -> tuple[str, float, float]:
         t0 = time.perf_counter()
@@ -482,11 +516,22 @@ class UBCSEAgent:
     def warmup(self) -> None:
         self.llm.warmup()
         self.retriever.warmup()
+        if self.kg_store and self.s.enable_kg_runtime:
+            try:
+                self.kg_store.verify_connectivity()
+                self.entity_index.build_from_kg(self.kg_store)
+                log.info("kg.warmup ok")
+            except Exception as exc:
+                log.warning("kg.warmup failed; disabling KG: %s", exc)
+                self.kg_store = None
+                self.tools = build_tool_registry(self.retriever, None)
+                self.entity_index = EntityIndex()
 
     def _build_answer_prompt(
         self, user_query: str, tool_results: list[ToolResult]
     ) -> list[LLMMessage]:
         blocks = []
+        kg_lines: list[str] = []
         src_idx = 0
         for tr in tool_results:
             if tr.name == "retrieve" and tr.ok:
@@ -500,11 +545,22 @@ class UBCSEAgent:
                         f"URL: {hit.get('url','')}\n"
                         f"{text}"
                     )
-            else:
+            elif tr.name in _KG_TOOL_NAMES:
+                line, _ = _format_kg_result(tr)
+                if line:
+                    kg_lines.append(line)
+            elif tr.ok:
                 blocks.append(f"TOOL:{tr.name} => {json.dumps(tr.payload, default=str)[:1200]}")
 
         history = "\n".join(f"{t.role}: {t.content}" for t in self.memory.turns())
-        context = "\n\n".join(blocks) if blocks else "(no retrieved context)"
+        kg_section = ""
+        if kg_lines:
+            kg_section = (
+                "Knowledge graph facts (Neo4j) — authoritative, cite as [KG]:\n"
+                + "\n".join(kg_lines)
+                + "\n\n"
+            )
+        context = kg_section + ("\n\n".join(blocks) if blocks else "(no retrieved context)")
         style = (
             "Answer concisely in 5-8 bullets or short paragraphs. Do not include a long "
             "preface. Keep the answer under 250 words unless the user asks for detail.\n\n"
@@ -546,3 +602,145 @@ class UBCSEAgent:
 
 def _normalize_cache_key(q: str) -> str:
     return re.sub(r"\s+", " ", q.strip().lower())[:256]
+
+
+_KG_TOOL_NAMES = frozenset({
+    "course_prereqs", "course_faculty", "related_labs",
+    "faculty_info", "lab_info", "program_info",
+    "faculty_by_area", "labs_by_area",
+})
+
+
+def _format_kg_result(tr: ToolResult) -> tuple[str | None, dict | None]:
+    """Render a KG ToolResult to (prompt_line, ui_chip_dict). Returns (None, None)
+    if the result is failed or empty."""
+    if not tr.ok or not tr.payload:
+        return None, None
+
+    name = tr.name
+    p = tr.payload
+
+    if name == "course_prereqs":
+        code = p.get("code", "")
+        prereqs = p.get("prerequisites", []) or []
+        if not prereqs:
+            return f"- {code}: no prerequisites recorded", None
+        joined = ", ".join(prereqs)
+        return f"- {code} prerequisites: {joined}", {
+            "kind": "prereqs",
+            "label": f"{code} prereqs: {joined}",
+        }
+
+    if name == "course_faculty":
+        code = p.get("code", "")
+        faculty = p.get("faculty", []) or []
+        names = [f.get("name", "") for f in faculty if f.get("name")]
+        if not names:
+            return None, None
+        joined = ", ".join(names)
+        chip_label = ", ".join(names[:3])
+        return f"- {code} taught by: {joined}", {
+            "kind": "faculty",
+            "label": f"{code} taught by: {chip_label}",
+        }
+
+    if name == "related_labs":
+        code = p.get("code", "")
+        labs = p.get("labs", []) or []
+        names = [l.get("name", "") for l in labs if l.get("name")]
+        if not names:
+            return None, None
+        joined = ", ".join(names)
+        chip_label = ", ".join(names[:3])
+        return f"- {code} related labs: {joined}", {
+            "kind": "labs",
+            "label": f"{code} related labs: {chip_label}",
+        }
+
+    if name == "faculty_info":
+        if not isinstance(p, dict) or not p.get("name"):
+            return None, None
+        n = p.get("name", "")
+        email = p.get("email", "")
+        office = p.get("office", "")
+        labs = p.get("labs", []) or []
+        lab_names = [l.get("name", "") for l in labs if l.get("name")]
+        parts = [n]
+        if email: parts.append(f"email: {email}")
+        if office: parts.append(f"office: {office}")
+        if lab_names: parts.append(f"labs: {', '.join(lab_names)}")
+        chip_suffix = f" ({lab_names[0]})" if lab_names else ""
+        return "- " + " — ".join(parts), {
+            "kind": "faculty_info",
+            "label": f"{n}{chip_suffix}",
+        }
+
+    if name == "lab_info":
+        if not isinstance(p, dict) or not p.get("name"):
+            return None, None
+        n = p.get("name", "")
+        area = p.get("area", "")
+        members = p.get("members", []) or []
+        member_names = [m.get("name", "") for m in members if m.get("name")]
+        parts = [n]
+        if area: parts.append(f"area: {area}")
+        if member_names: parts.append(f"members: {', '.join(member_names)}")
+        chip_suffix = f" ({area})" if area else ""
+        return "- " + " — ".join(parts), {
+            "kind": "lab_info",
+            "label": f"{n}{chip_suffix}",
+        }
+
+    if name == "program_info":
+        if not isinstance(p, dict) or not p.get("name"):
+            return None, None
+        n = p.get("name", "")
+        level = p.get("level", "")
+        cc = p.get("course_count", 0)
+        parts = [n]
+        if level: parts.append(f"level: {level}")
+        if cc: parts.append(f"{cc} courses")
+        chip_suffix = f" ({level})" if level else ""
+        return "- " + " — ".join(parts), {
+            "kind": "program_info",
+            "label": f"{n}{chip_suffix}",
+        }
+
+    if name == "faculty_by_area":
+        area = p.get("area", "")
+        faculty = p.get("faculty", []) or []
+        by_name: dict[str, set[str]] = {}
+        for f in faculty:
+            n = f.get("name", "")
+            lab = f.get("lab", "") or ""
+            if not n:
+                continue
+            by_name.setdefault(n, set())
+            if lab:
+                by_name[n].add(lab)
+        if not by_name:
+            return None, None
+        items = [
+            f"{n} ({', '.join(sorted(labs))})" if labs else n
+            for n, labs in by_name.items()
+        ]
+        chip_label = ", ".join(list(by_name.keys())[:4])
+        return f"- Faculty in {area}: " + "; ".join(items), {
+            "kind": "faculty_by_area",
+            "label": f"{area} faculty: {chip_label}",
+        }
+
+    if name == "labs_by_area":
+        area = p.get("area", "")
+        labs = p.get("labs", []) or []
+        names = [l.get("name", "") for l in labs if l.get("name")]
+        if not names:
+            return None, None
+        joined = ", ".join(names)
+        chip_label = ", ".join(names[:3])
+        return f"- Labs in {area}: {joined}", {
+            "kind": "labs_by_area",
+            "label": f"{area} labs: {chip_label}",
+        }
+
+    return None, None
