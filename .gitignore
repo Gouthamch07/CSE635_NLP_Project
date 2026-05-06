@@ -16,6 +16,10 @@ data/eval_out/
 *.pkl
 *.jsonl
 !data/eval/*.example
+# Keep the BM25 index so deployments (Render) are self-contained.
+!data/processed/
+data/processed/*
+!data/processed/bm25.pkl
 .DS_Store
 *.log
 .claude/

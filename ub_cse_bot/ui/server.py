@@ -5,6 +5,10 @@ Then open http://localhost:8000
 """
 from __future__ import annotations
 
+from ub_cse_bot.utils.bootstrap import setup_gcp_credentials_from_env
+
+setup_gcp_credentials_from_env()
+
 from pathlib import Path
 from typing import Any
 

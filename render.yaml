@@ -1,0 +1,78 @@
+# Render Blueprint for the UB CSE Assistant.
+# Deploy: New + > Blueprint > pick this repo > Apply.
+# After provisioning, set the secrets marked `sync: false` in the dashboard.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: ub-cse-chatbot
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install --upgrade pip && pip install -r requirements.runtime.txt
+    startCommand: PYTHONPATH=. uvicorn ub_cse_bot.ui.server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      # ---- Runtime ----
+      - key: PYTHON_VERSION
+        value: "3.13.7"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: WARM_START_ON_STARTUP
+        value: "true"
+      - key: ENABLE_KG_RUNTIME
+        value: "true"
+      - key: ENABLE_LLM_PLANNER
+        value: "false"
+      - key: ENABLE_LATENCY_DEBUG
+        value: "false"
+      - key: CONCISE_ANSWERS
+        value: "false"
+      - key: ANSWER_CONTEXT_K
+        value: "6"
+      - key: ANSWER_CONTEXT_CHARS
+        value: "1400"
+      - key: ANSWER_MAX_OUTPUT_TOKENS
+        value: "1600"
+      - key: CROSS_ENCODER_CANDIDATE_K
+        value: "12"
+      - key: RERANK_TOP_K
+        value: "8"
+
+      # ---- Vertex / Gemini ----
+      - key: VERTEX_MODEL
+        value: gemini-3-flash-preview
+      - key: VERTEX_THINKING_BUDGET
+        value: "0"
+      - key: GOOGLE_CLOUD_LOCATION
+        value: global             # gemini-3-flash-preview is global-only
+      - key: GOOGLE_CLOUD_EMBED_LOCATION
+        value: us-central1        # text-embedding-004 lives here
+
+      # ---- Pinecone (non-secrets) ----
+      - key: PINECONE_INDEX
+        value: ub-cse-chatbot
+      - key: PINECONE_REGION
+        value: us-east-1
+      - key: PINECONE_CLOUD
+        value: aws
+      - key: PINECONE_DIMENSION
+        value: "768"
+
+      # ---- Neo4j (non-secrets) ----
+      - key: NEO4J_USER
+        value: neo4j
+      - key: NEO4J_DATABASE
+        value: neo4j
+
+      # ---- Secrets (set in Render dashboard, never committed) ----
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false              # paste the full service-account JSON contents
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: NEO4J_URI
+        sync: false              # neo4j+s://<id>.databases.neo4j.io
+      - key: NEO4J_PASSWORD
+        sync: false
