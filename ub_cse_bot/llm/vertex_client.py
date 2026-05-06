@@ -89,12 +89,19 @@ class VertexGemini:
         elif self.s.vertex_thinking_budget > 0 or self.s.vertex_thinking_budget == -1:
             thinking_config = types.ThinkingConfig(thinking_budget=self.s.vertex_thinking_budget)
 
+        # We orchestrate tools ourselves; the SDK's automatic function-calling
+        # loop adds round-trip overhead we never use.
+        afc = None
+        if not tools:
+            afc = types.AutomaticFunctionCallingConfig(disable=True)
+
         return types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             system_instruction=system_instruction,
             thinking_config=thinking_config,
             tools=tools,
+            automatic_function_calling=afc,
         )
 
     # ---------- calls ----------

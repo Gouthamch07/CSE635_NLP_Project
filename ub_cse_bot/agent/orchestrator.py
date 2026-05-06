@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
@@ -433,14 +434,27 @@ class UBCSEAgent:
         return calls, self._execute_tool_calls(calls)
 
     def _execute_tool_calls(self, calls: list[ToolCall]) -> list[ToolResult]:
-        results: list[ToolResult] = []
-        for c in calls:
-            log.info("tool_call name=%s args=%s", c.name, c.args)
-            t0 = time.perf_counter()
-            results.append(self.tools[c.name].func(c.args))
-            if self.s.enable_latency_debug:
-                log.info("latency.tool name=%s ms=%.1f", c.name, (time.perf_counter() - t0) * 1000)
-        return results
+        if not calls:
+            return []
+        if len(calls) == 1:
+            return [self._run_one(calls[0])]
+        # All tools are I/O-bound (Pinecone, Neo4j, Vertex embed) — fan out
+        # in a thread pool so the wall clock = max(individual) instead of sum.
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            futures = [pool.submit(self._run_one, c) for c in calls]
+            return [f.result() for f in futures]
+
+    def _run_one(self, c: ToolCall) -> ToolResult:
+        log.info("tool_call name=%s args=%s", c.name, c.args)
+        t0 = time.perf_counter()
+        try:
+            result = self.tools[c.name].func(c.args)
+        except Exception as e:
+            log.warning("tool_call %s failed: %s", c.name, e)
+            result = ToolResult(c.name, None, ok=False, error=str(e))
+        if self.s.enable_latency_debug:
+            log.info("latency.tool name=%s ms=%.1f", c.name, (time.perf_counter() - t0) * 1000)
+        return result
 
     def _sources_from_tool_results(
         self, tool_results: list[ToolResult]
