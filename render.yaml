@@ -42,6 +42,11 @@ services:
       # ---- Vertex / Gemini ----
       - key: VERTEX_MODEL
         value: gemini-3-flash-preview
+      # Gemini 3 ignores thinking_budget; thinking_level is the real knob.
+      # MINIMAL constrains to as few thinking tokens as possible (the only
+      # way to get fast TTFT — Gemini 3 cannot fully disable thinking).
+      - key: VERTEX_THINKING_LEVEL
+        value: MINIMAL
       - key: VERTEX_THINKING_BUDGET
         value: "0"
       - key: GOOGLE_CLOUD_LOCATION

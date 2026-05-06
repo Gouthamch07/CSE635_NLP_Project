@@ -36,6 +36,7 @@ export ENABLE_LLM_PLANNER=false
 export CROSS_ENCODER_CANDIDATE_K=12
 export ENABLE_LATENCY_DEBUG=true
 export VERTEX_MODEL=gemini-3-flash-preview
+export VERTEX_THINKING_LEVEL=MINIMAL    # Gemini 3 ignores budget; level is the real knob
 export VERTEX_THINKING_BUDGET=0
 export ANSWER_CONTEXT_K=6
 export ANSWER_CONTEXT_CHARS=1400
