@@ -20,13 +20,16 @@ log = get_logger(__name__)
 _CODE_RE = re.compile(r"\b(CSE|EAS|MTH|EE)\s?-?\s?(\d{3}[A-Z]?)\b", re.IGNORECASE)
 
 _FACULTY_INTENT_RE = re.compile(
-    r"\b(who\s+teach\w*|who\s+research\w*|professor|faculty|researcher|"
-    r"specialist|expert|advisor|works\s+on|research\s+in|research\s+on)\b",
+    r"\b(who\s+teach\w*|who\s+research\w*|prof|profs|professor|professors|"
+    r"faculty|researcher|researchers|instructor|instructors|teaches|taught|"
+    r"specialist|expert|experts|advisor|advisors|head|leader|leading|"
+    r"works\s+on|working\s+on|research\s+in|research\s+on|specializing\s+in)\b",
     re.IGNORECASE,
 )
 
 _LAB_INTENT_RE = re.compile(
-    r"\b(lab|labs|research\s+group|research\s+groups|research\s+center)\b",
+    r"\b(lab|labs|research\s+group|research\s+groups|research\s+center|"
+    r"research\s+area|research\s+areas|focus\s+area|focus\s+areas)\b",
     re.IGNORECASE,
 )
 
@@ -195,21 +198,13 @@ class EntityIndex:
                 if name:
                     _add("program_info", name, {"name": name}, "program name")
 
-        # Topic intent
+        # Topic detected → always fan out to faculty + labs in that area.
+        # Cheap (sub-10ms each), and "ml", "vision", etc. almost always
+        # imply interest in who works on it within UB CSE.
         q_lower = query.lower()
-        topics = self._detect_topics(q_lower)
-        if topics:
-            wants_faculty = bool(_FACULTY_INTENT_RE.search(query))
-            wants_labs = bool(_LAB_INTENT_RE.search(query))
-            broad_research = "research" in q_lower
-            for topic in topics:
-                if wants_faculty:
-                    _add("faculty_by_area", topic, {"area": topic}, "topic+faculty")
-                if wants_labs:
-                    _add("labs_by_area", topic, {"area": topic}, "topic+lab")
-                if broad_research and not wants_faculty and not wants_labs:
-                    _add("faculty_by_area", topic, {"area": topic}, "topic+research")
-                    _add("labs_by_area", topic, {"area": topic}, "topic+research")
+        for topic in self._detect_topics(q_lower):
+            _add("faculty_by_area", topic, {"area": topic}, "topic")
+            _add("labs_by_area", topic, {"area": topic}, "topic")
         return intents
 
     @staticmethod
