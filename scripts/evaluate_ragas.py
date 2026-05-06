@@ -123,9 +123,46 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
     if have_gt and context_recall is not None:
         metrics.append(context_recall)
 
+    # Pick a judge LLM. If OPENAI_API_KEY is set we let RAGAS use its default.
+    # Otherwise wire our existing Vertex Gemini as the judge — same creds the
+    # chatbot uses, no extra accounts needed.
+    judge_llm = None
+    judge_embed = None
+    if not os.environ.get("OPENAI_API_KEY"):
+        try:
+            from langchain_google_vertexai import ChatVertexAI, VertexAIEmbeddings
+            from ragas.embeddings import LangchainEmbeddingsWrapper
+            from ragas.llms import LangchainLLMWrapper
+            from config import get_settings
+            s = get_settings()
+            judge_llm = LangchainLLMWrapper(ChatVertexAI(
+                model_name=s.vertex_model,
+                project=s.google_cloud_project,
+                location=s.google_cloud_location,
+                temperature=0,
+            ))
+            judge_embed = LangchainEmbeddingsWrapper(VertexAIEmbeddings(
+                model_name=s.vertex_embed_model,
+                project=s.google_cloud_project,
+                location=s.google_cloud_embed_location or "us-central1",
+            ))
+            log.info("using Vertex Gemini as RAGAS judge (no OpenAI key set)")
+        except Exception as exc:
+            log.warning(
+                "could not build Vertex judge for RAGAS: %s — install "
+                "`langchain-google-vertexai` or set OPENAI_API_KEY",
+                exc,
+            )
+            return rows, None
+
     log.info("running ragas.evaluate on %d rows ...", len(scorable))
     try:
-        result = evaluate(ds, metrics=metrics)
+        result = evaluate(
+            ds,
+            metrics=metrics,
+            llm=judge_llm,
+            embeddings=judge_embed,
+        )
     except Exception as exc:
         log.warning("ragas.evaluate failed: %s", exc)
         return rows, None

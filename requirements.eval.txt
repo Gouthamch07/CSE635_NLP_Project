@@ -4,9 +4,11 @@
 # Graphs
 matplotlib>=3.8
 
-# Optional: real RAGAS scoring. Heavy deps + needs an OpenAI / Vertex judge LLM.
-# Comment out to skip — evaluate_llm_judge.py covers the same ground using the
-# project's existing Vertex Gemini.
-#ragas>=0.2
-#datasets>=2.20
-#pandas>=2.2
+# Optional: real RAGAS scoring. Heavy deps + needs a judge LLM.
+# `langchain-google-vertexai` lets RAGAS reuse our Vertex Gemini creds so no
+# OpenAI key is required. evaluate_ragas.py auto-detects this path when
+# OPENAI_API_KEY is unset.
+ragas>=0.2
+datasets>=2.20
+pandas>=2.2
+langchain-google-vertexai>=2.0
