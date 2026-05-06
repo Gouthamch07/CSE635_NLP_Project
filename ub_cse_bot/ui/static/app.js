@@ -152,7 +152,7 @@ function buildKgRowHtml(kgFacts) {
   if (!kgFacts || !kgFacts.length) return "";
   const chips = kgFacts.slice(0, 6).map((f) => {
     const label = escapeHtml(f.label || f.kind || "fact");
-    return `<span class="kg-chip" title="from Neo4j knowledge graph"><span class="kg-tag">KG</span><span>${label}</span></span>`;
+    return `<span class="kg-chip" title="from Neo4j knowledge graph">${label}</span>`;
   }).join("");
   return `<div class="kg-row">${chips}</div>`;
 }

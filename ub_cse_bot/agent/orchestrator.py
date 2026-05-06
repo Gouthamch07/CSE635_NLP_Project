@@ -577,7 +577,7 @@ class UBCSEAgent:
         kg_section = ""
         if kg_lines:
             kg_section = (
-                "Knowledge graph facts (Neo4j) — authoritative, cite as [KG]:\n"
+                "Knowledge graph facts (authoritative; do not add inline citations for these):\n"
                 + "\n".join(kg_lines)
                 + "\n\n"
             )
