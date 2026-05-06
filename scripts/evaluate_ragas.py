@@ -1,0 +1,242 @@
+"""RAGAS-style answer quality evaluation.
+
+Pipeline:
+  1. Hit the chat backend for every in-domain query
+  2. Save the answer + retrieved contexts (sources)
+  3. If `ragas` is importable, score faithfulness / answer_relevancy /
+     context_precision (and context_recall if a ground_truth field is supplied)
+  4. If `ragas` is missing or fails, write a clear note in the summary and a
+     CSV with the answers + contexts so evaluate_llm_judge.py can score them
+
+Usage:
+    PYTHONPATH=. python scripts/evaluate_ragas.py
+    PYTHONPATH=. python scripts/evaluate_ragas.py --backend-url http://localhost:8000
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import logging
+import os
+from pathlib import Path
+
+import httpx
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_QUERIES = ROOT / "eval" / "test_queries.jsonl"
+DEFAULT_OUT_CSV = ROOT / "results" / "ragas_eval.csv"
+DEFAULT_OUT_JSON = ROOT / "results" / "ragas_summary.json"
+DEFAULT_RAW_PATH = ROOT / "results" / "ragas_raw.jsonl"
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+log = logging.getLogger("eval.ragas")
+
+
+def load_queries(path: Path) -> list[dict]:
+    """Only in-domain non-follow-up queries (RAGAS doesn't model multi-turn well)."""
+    rows: list[dict] = []
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if obj.get("category") == "out_of_scope":
+                continue
+            if "turns" in obj:
+                continue
+            rows.append(obj)
+    return rows
+
+
+def fetch_answer(client: httpx.Client, base_url: str, query: str, timeout: float) -> dict:
+    """Call /chat (non-streaming) and return {answer, contexts:list[str], sources}."""
+    r = client.post(
+        f"{base_url}/chat",
+        json={"message": query, "user_id": "eval-ragas"},
+        timeout=timeout,
+    )
+    r.raise_for_status()
+    body = r.json()
+    contexts: list[str] = []
+
+    # Prefer hit text from retrieval_trace if available
+    trace = body.get("retrieval_trace") or {}
+    for h in (trace.get("hits") or [])[:6]:
+        text = h.get("text") if isinstance(h, dict) else None
+        if text:
+            contexts.append(text)
+
+    # Fallback: pull from sources (title + url + section)
+    if not contexts:
+        for s in body.get("sources", []) or []:
+            blob = " — ".join(filter(None, [
+                s.get("title", ""), s.get("section", ""), s.get("url", ""),
+            ]))
+            if blob:
+                contexts.append(blob)
+
+    return {
+        "answer": body.get("text", ""),
+        "contexts": contexts,
+        "sources": body.get("sources", []),
+        "scope": body.get("scope", ""),
+    }
+
+
+def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
+    """Score with RAGAS if available. Returns (rows_with_scores, summary_or_None)."""
+    try:
+        from ragas import evaluate
+        from ragas.metrics import (
+            answer_relevancy,
+            context_precision,
+            faithfulness,
+        )
+        try:
+            from ragas.metrics import context_recall
+        except Exception:
+            context_recall = None  # type: ignore[assignment]
+        from datasets import Dataset
+    except Exception as exc:
+        log.warning("RAGAS not available: %s", exc)
+        return rows, None
+
+    # Skip rows with empty answers / contexts (RAGAS will crash on them)
+    scorable = [r for r in rows if r["answer"] and r["contexts"]]
+    if not scorable:
+        log.warning("no scorable rows for RAGAS")
+        return rows, None
+
+    dataset_dict = {
+        "question": [r["query"] for r in scorable],
+        "answer": [r["answer"] for r in scorable],
+        "contexts": [r["contexts"] for r in scorable],
+    }
+    have_gt = all(r.get("ground_truth") for r in scorable)
+    if have_gt:
+        dataset_dict["ground_truth"] = [r["ground_truth"] for r in scorable]
+
+    ds = Dataset.from_dict(dataset_dict)
+    metrics = [faithfulness, answer_relevancy, context_precision]
+    if have_gt and context_recall is not None:
+        metrics.append(context_recall)
+
+    log.info("running ragas.evaluate on %d rows ...", len(scorable))
+    try:
+        result = evaluate(ds, metrics=metrics)
+    except Exception as exc:
+        log.warning("ragas.evaluate failed: %s", exc)
+        return rows, None
+
+    df = result.to_pandas()
+    by_q = {r["query"]: r for r in scorable}
+    metric_cols = [m.name for m in metrics]
+    for _, df_row in df.iterrows():
+        q = df_row["question"]
+        target = by_q.get(q)
+        if target is None:
+            continue
+        for col in metric_cols:
+            target[col] = float(df_row[col]) if df_row[col] is not None else None
+
+    summary = {}
+    for col in metric_cols:
+        values = [r.get(col) for r in scorable if r.get(col) is not None]
+        summary[f"avg_{col}"] = round(sum(values) / max(1, len(values)), 4) if values else None
+    summary["num_scored"] = len(scorable)
+    summary["num_total"] = len(rows)
+    return rows, summary
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--queries", type=Path, default=DEFAULT_QUERIES)
+    ap.add_argument("--out-csv", type=Path, default=DEFAULT_OUT_CSV)
+    ap.add_argument("--out-json", type=Path, default=DEFAULT_OUT_JSON)
+    ap.add_argument("--raw-jsonl", type=Path, default=DEFAULT_RAW_PATH,
+                    help="Where to dump raw answers+contexts so evaluate_llm_judge can read them")
+    ap.add_argument(
+        "--backend-url",
+        default=os.environ.get("BACKEND_URL", "http://localhost:8000"),
+    )
+    ap.add_argument("--timeout", type=float, default=120.0)
+    ap.add_argument(
+        "--limit", type=int, default=0,
+        help="Run only the first N queries (0 = all). Useful for quick smoke runs.",
+    )
+    args = ap.parse_args()
+
+    args.out_csv.parent.mkdir(parents=True, exist_ok=True)
+    args.out_json.parent.mkdir(parents=True, exist_ok=True)
+
+    queries = load_queries(args.queries)
+    if args.limit > 0:
+        queries = queries[: args.limit]
+    log.info("loaded %d in-domain queries; backend=%s", len(queries), args.backend_url)
+
+    rows: list[dict] = []
+    with httpx.Client() as client:
+        for i, q in enumerate(queries, 1):
+            log.info("[%d/%d] %s", i, len(queries), q["query"][:80])
+            try:
+                resp = fetch_answer(client, args.backend_url, q["query"], args.timeout)
+            except Exception as exc:
+                log.warning("/chat failed for %s: %s", q["id"], exc)
+                resp = {"answer": "", "contexts": [], "sources": [], "scope": ""}
+            rows.append({
+                "query_id": q["id"],
+                "query": q["query"],
+                "category": q.get("category", ""),
+                "answer": resp["answer"],
+                "contexts": resp["contexts"],
+                "sources": resp["sources"],
+                "ground_truth": q.get("ground_truth", ""),
+            })
+
+    # Always write raw jsonl (used by evaluate_llm_judge.py)
+    with args.raw_jsonl.open("w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    log.info("wrote raw answers to %s", args.raw_jsonl)
+
+    rows, ragas_summary = try_ragas_score(rows)
+
+    metric_cols = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+    fieldnames = ["query_id", "query", "category", "answer", "contexts", *metric_cols]
+    with args.out_csv.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({
+                "query_id": r["query_id"],
+                "query": r["query"],
+                "category": r["category"],
+                "answer": r["answer"],
+                "contexts": " ||| ".join(r.get("contexts") or [])[:8000],
+                **{k: r.get(k, "") for k in metric_cols},
+            })
+    log.info("wrote %s (%d rows)", args.out_csv, len(rows))
+
+    summary = ragas_summary or {
+        "ragas_available": False,
+        "num_total": len(rows),
+        "note": (
+            "RAGAS not installed / failed. To enable real RAGAS scoring run:\n"
+            "    pip install 'ragas>=0.2' datasets pandas\n"
+            "and ensure OPENAI_API_KEY (or another supported judge LLM) is set.\n"
+            "Otherwise use scripts/evaluate_llm_judge.py — it scores the same\n"
+            "answers (saved to results/ragas_raw.jsonl) with our own Vertex Gemini "
+            "judge."
+        ),
+    }
+    if ragas_summary:
+        summary = {"ragas_available": True, **ragas_summary}
+    args.out_json.write_text(json.dumps(summary, indent=2))
+    log.info("summary: %s", json.dumps(summary, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

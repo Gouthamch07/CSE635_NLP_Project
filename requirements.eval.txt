@@ -1,0 +1,12 @@
+# Extra dependencies needed only for the evaluation pipeline (scripts/evaluate_*.py).
+# Install on top of either requirements.txt or requirements.runtime.txt.
+
+# Graphs
+matplotlib>=3.8
+
+# Optional: real RAGAS scoring. Heavy deps + needs an OpenAI / Vertex judge LLM.
+# Comment out to skip — evaluate_llm_judge.py covers the same ground using the
+# project's existing Vertex Gemini.
+#ragas>=0.2
+#datasets>=2.20
+#pandas>=2.2
