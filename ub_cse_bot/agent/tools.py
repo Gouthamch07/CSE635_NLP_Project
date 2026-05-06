@@ -142,6 +142,22 @@ def build_tool_registry(
         except Exception as e:
             return ToolResult("labs_by_area", None, ok=False, error=str(e))
 
+    def _graph_search(args: dict) -> ToolResult:
+        """Generic, always-on graph search. Tokenizes the user query and
+        matches any Course/Faculty/Lab/Program node whose properties contain
+        a token. No hardcoded intent keywords."""
+        query = (args.get("query") or "").strip()
+        if not kg_store or not query:
+            return ToolResult("graph_search", [], ok=False, error="no query / no kg")
+        tokens = _tokenize_for_graph(query)
+        if not tokens:
+            return ToolResult("graph_search", {"query": query, "hits": []})
+        try:
+            hits = kg_store.search_graph(tokens, limit=int(args.get("limit", 10)))
+            return ToolResult("graph_search", {"query": query, "tokens": tokens, "hits": hits})
+        except Exception as e:
+            return ToolResult("graph_search", None, ok=False, error=str(e))
+
     tools = [
         Tool(
             name="retrieve",
@@ -202,6 +218,16 @@ def build_tool_registry(
             func=_labs_by_area,
             schema={"area": "research area keyword"},
         ),
+        Tool(
+            name="graph_search",
+            description=(
+                "Generic Neo4j search across Course/Faculty/Lab/Program nodes. "
+                "Token-level CONTAINS match against name/title/description/code/area. "
+                "Always run for every chat — catches whatever the targeted detectors miss."
+            ),
+            func=_graph_search,
+            schema={"query": "raw user query", "limit": "int (default 10)"},
+        ),
     ]
     return {t.name: t for t in tools}
 
@@ -214,3 +240,34 @@ def _norm_code(s: str) -> str:
     if not m:
         return ""
     return f"{m.group(1).upper()} {m.group(2).upper()}"
+
+
+_GRAPH_STOPWORDS = {
+    # query-fluff that should not waste a Neo4j scan
+    "what", "who", "where", "when", "why", "how", "which", "whose",
+    "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by",
+    "and", "or", "but", "not", "no", "about", "from", "as", "into",
+    "tell", "show", "list", "find", "give", "me", "i", "you", "we", "they",
+    "this", "that", "these", "those", "any", "some", "all", "many", "much",
+    "can", "could", "should", "would", "may", "might", "will", "shall",
+    "ub", "cse", "ubcse", "course", "courses", "class", "classes",
+    "have", "has", "had", "there", "their", "his", "her", "them",
+    "please", "kindly",
+}
+
+
+def _tokenize_for_graph(query: str) -> list[str]:
+    """Lowercase alphanum tokens of length >= 3, with common stopwords removed.
+    Keeps it simple — no language-specific stemming, no NER. The Neo4j
+    CONTAINS match handles substring overlap (e.g. 'reinforcement' matches
+    a course title 'Reinforcement Learning')."""
+    raw = re.findall(r"[A-Za-z0-9]{3,}", query.lower())
+    seen: set[str] = set()
+    out: list[str] = []
+    for tok in raw:
+        if tok in _GRAPH_STOPWORDS or tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+    return out

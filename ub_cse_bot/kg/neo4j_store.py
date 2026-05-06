@@ -118,6 +118,35 @@ class Neo4jStore:
         with self.session() as s:
             s.run("RETURN 1 AS ok").single()
 
+    # ---------- generic graph search (always-on for every user query) ----------
+    def search_graph(self, tokens: list[str], limit: int = 10) -> list[dict]:
+        """Token-level CONTAINS scan across all node types — no hardcoded
+        intent keywords. Returns whatever Course / Faculty / Lab / Program
+        nodes have a property matching ANY query token.
+        """
+        if not tokens:
+            return []
+        q = """
+        MATCH (n)
+        WHERE (n:Course OR n:Faculty OR n:Lab OR n:Program)
+          AND any(tok IN $tokens WHERE
+            (n.name        IS NOT NULL AND toLower(n.name)        CONTAINS tok) OR
+            (n.title       IS NOT NULL AND toLower(n.title)       CONTAINS tok) OR
+            (n.description IS NOT NULL AND toLower(n.description) CONTAINS tok) OR
+            (n.code        IS NOT NULL AND toLower(n.code)        CONTAINS tok) OR
+            (n.area        IS NOT NULL AND toLower(n.area)        CONTAINS tok)
+          )
+        RETURN labels(n)[0]                       AS type,
+               coalesce(n.code, '')                AS code,
+               coalesce(n.name, n.title, n.code)   AS name,
+               coalesce(n.url, '')                 AS url,
+               coalesce(n.area, '')                AS area,
+               coalesce(n.email, '')               AS email
+        LIMIT $limit
+        """
+        with self.session() as s:
+            return [r.data() for r in s.run(q, tokens=tokens, limit=limit)]
+
     # ---------- queries used by agent tools ----------
     def related_faculty_for_course(self, code: str) -> list[dict]:
         q = """

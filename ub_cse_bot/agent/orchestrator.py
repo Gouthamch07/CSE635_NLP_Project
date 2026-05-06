@@ -420,6 +420,13 @@ class UBCSEAgent:
     def _retrieve_directly(self, user_query: str) -> tuple[list[ToolCall], list[ToolResult]]:
         calls = [ToolCall(name="retrieve", args={"query": user_query, "k": self.s.rerank_top_k})]
         if self.kg_store and self.s.enable_kg_runtime:
+            # Always-on generic graph search — runs for EVERY chat, no
+            # gating on intent keywords. Catches anything the targeted
+            # detectors below miss.
+            calls.append(ToolCall(name="graph_search", args={"query": user_query}))
+            # Targeted detections (course-code regex, exact entity-name
+            # match, topic dictionary) layer additional structured info
+            # on top of graph_search.
             for intent in self.entity_index.detect(user_query):
                 if intent.tool in self.tools:
                     calls.append(ToolCall(name=intent.tool, args=intent.args))
@@ -608,6 +615,7 @@ _KG_TOOL_NAMES = frozenset({
     "course_prereqs", "course_faculty", "related_labs",
     "faculty_info", "lab_info", "program_info",
     "faculty_by_area", "labs_by_area",
+    "graph_search",
 })
 
 
@@ -741,6 +749,35 @@ def _format_kg_result(tr: ToolResult) -> tuple[str | None, dict | None]:
         return f"- Labs in {area}: {joined}", {
             "kind": "labs_by_area",
             "label": f"{area} labs: {chip_label}",
+        }
+
+    if name == "graph_search":
+        hits = p.get("hits", []) or []
+        if not hits:
+            return None, None
+        lines = []
+        chip_parts: list[str] = []
+        for h in hits:
+            t = h.get("type", "")
+            n = h.get("name", "") or h.get("code", "")
+            if not n:
+                continue
+            extras = []
+            if h.get("code") and h.get("code") != n:
+                extras.append(h["code"])
+            if h.get("area"):
+                extras.append(h["area"])
+            if h.get("email"):
+                extras.append(h["email"])
+            suffix = f" ({', '.join(extras)})" if extras else ""
+            lines.append(f"- {t}: {n}{suffix}")
+            chip_parts.append(f"{n} ({t})" if len(chip_parts) < 4 else "")
+        if not lines:
+            return None, None
+        chip_label = ", ".join(c for c in chip_parts if c)
+        return "\n".join(lines), {
+            "kind": "graph_search",
+            "label": f"graph: {chip_label}" if chip_label else "graph hits",
         }
 
     return None, None
