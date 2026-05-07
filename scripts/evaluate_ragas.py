@@ -89,15 +89,22 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
     """Score with RAGAS if available. Returns (rows_with_scores, summary_or_None)."""
     try:
         from ragas import evaluate
-        from ragas.metrics import (
-            answer_relevancy,
-            context_precision,
-            faithfulness,
-        )
+        from ragas.metrics import answer_relevancy, faithfulness
         try:
             from ragas.metrics import context_recall
         except Exception:
             context_recall = None  # type: ignore[assignment]
+        # RAGAS 0.2+ split context_precision into two: the default needs a
+        # `reference` ground-truth column we don't have; the WithoutReference
+        # variant uses only question / answer / contexts (LLM-judged).
+        try:
+            from ragas.metrics import LLMContextPrecisionWithoutReference
+            context_precision_metric = LLMContextPrecisionWithoutReference()
+        except Exception:
+            try:
+                from ragas.metrics import context_precision as context_precision_metric  # legacy
+            except Exception:
+                context_precision_metric = None
         from datasets import Dataset
     except Exception as exc:
         log.warning("RAGAS not available: %s", exc)
@@ -119,7 +126,9 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
         dataset_dict["ground_truth"] = [r["ground_truth"] for r in scorable]
 
     ds = Dataset.from_dict(dataset_dict)
-    metrics = [faithfulness, answer_relevancy, context_precision]
+    metrics = [faithfulness, answer_relevancy]
+    if context_precision_metric is not None:
+        metrics.append(context_precision_metric)
     if have_gt and context_recall is not None:
         metrics.append(context_recall)
 
@@ -169,14 +178,29 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
 
     df = result.to_pandas()
     by_q = {r["query"]: r for r in scorable}
-    metric_cols = [m.name for m in metrics]
-    for _, df_row in df.iterrows():
-        q = df_row["question"]
-        target = by_q.get(q)
-        if target is None:
-            continue
-        for col in metric_cols:
-            target[col] = float(df_row[col]) if df_row[col] is not None else None
+    # Pull whatever score columns RAGAS produced (names vary between versions).
+    score_cols = [c for c in df.columns if c not in {
+        "user_input", "question", "response", "answer", "retrieved_contexts",
+        "contexts", "reference", "ground_truth",
+    }]
+    # Friendly canonical names so the summary reads consistently
+    rename = {
+        "llm_context_precision_without_reference": "context_precision",
+        "llm_context_precision_with_reference": "context_precision",
+    }
+    metric_cols: list[str] = []
+    for raw_col in score_cols:
+        canon = rename.get(raw_col, raw_col)
+        metric_cols.append(canon)
+        for _, df_row in df.iterrows():
+            q = df_row.get("user_input") or df_row.get("question")
+            target = by_q.get(q)
+            if target is None:
+                continue
+            try:
+                target[canon] = float(df_row[raw_col]) if df_row[raw_col] is not None else None
+            except Exception:
+                target[canon] = None
 
     summary = {}
     for col in metric_cols:
