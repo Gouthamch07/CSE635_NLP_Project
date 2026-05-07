@@ -1,5 +1,10 @@
 # UB CSE Website Chatbot
 
+
+https://www.loom.com/share/566e0f522a2d4818ab77754cffb6db0b
+
+https://ub-cse-chatbot-682578067933.us-central1.run.app/
+
 Conversational assistant for the University at Buffalo Computer Science & Engineering department, grounded in the department website plus linked PDFs/syllabi.
 
 ## Sub-systems
