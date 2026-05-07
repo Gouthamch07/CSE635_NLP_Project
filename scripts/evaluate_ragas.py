@@ -149,6 +149,10 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
                 project=s.google_cloud_project,
                 location=s.google_cloud_location,
                 temperature=0,
+                # Per-call request timeout — faithfulness / context_precision
+                # do claim-by-claim verification and can run long.
+                request_timeout=180,
+                max_retries=2,
             ))
             judge_embed = LangchainEmbeddingsWrapper(VertexAIEmbeddings(
                 model_name=s.vertex_embed_model,
@@ -164,6 +168,14 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
             )
             return rows, None
 
+    # Cap concurrency so we don't pile parallel Gemini calls and trip the
+    # global rate limit. Bump per-job timeout to absorb slow faithfulness runs.
+    try:
+        from ragas.run_config import RunConfig
+        run_config = RunConfig(timeout=300, max_workers=4, max_retries=3)
+    except Exception:
+        run_config = None
+
     log.info("running ragas.evaluate on %d rows ...", len(scorable))
     try:
         result = evaluate(
@@ -171,6 +183,7 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
             metrics=metrics,
             llm=judge_llm,
             embeddings=judge_embed,
+            run_config=run_config,
         )
     except Exception as exc:
         log.warning("ragas.evaluate failed: %s", exc)
@@ -202,10 +215,17 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
             except Exception:
                 target[canon] = None
 
+    import math
     summary = {}
     for col in metric_cols:
-        values = [r.get(col) for r in scorable if r.get(col) is not None]
-        summary[f"avg_{col}"] = round(sum(values) / max(1, len(values)), 4) if values else None
+        values = [
+            v for r in scorable
+            if (v := r.get(col)) is not None
+            and isinstance(v, (int, float))
+            and not math.isnan(v)
+        ]
+        summary[f"avg_{col}"] = round(sum(values) / len(values), 4) if values else None
+        summary[f"num_{col}_scored"] = len(values)
     summary["num_scored"] = len(scorable)
     summary["num_total"] = len(rows)
     return rows, summary
