@@ -89,7 +89,15 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
     """Score with RAGAS if available. Returns (rows_with_scores, summary_or_None)."""
     try:
         from ragas import evaluate
-        from ragas.metrics import answer_relevancy, faithfulness
+        from ragas.metrics import answer_relevancy
+        # Faithfulness: try the modern collections-style implementation first
+        # (more lenient JSON parsing on non-OpenAI judges); fall back to the
+        # legacy module-level metric.
+        try:
+            from ragas.metrics.collections import Faithfulness
+            faithfulness = Faithfulness()
+        except Exception:
+            from ragas.metrics import faithfulness  # type: ignore[assignment]
         try:
             from ragas.metrics import context_recall
         except Exception:
@@ -177,6 +185,10 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
         run_config = None
 
     log.info("running ragas.evaluate on %d rows ...", len(scorable))
+    # Surface RAGAS internal exceptions so we can see WHY a metric fails (the
+    # default RAGAS run swallows per-job exceptions and just emits NaN).
+    import logging as _logging
+    _logging.getLogger("ragas.executor").setLevel(_logging.DEBUG)
     try:
         result = evaluate(
             ds,
@@ -184,6 +196,7 @@ def try_ragas_score(rows: list[dict]) -> tuple[list[dict], dict | None]:
             llm=judge_llm,
             embeddings=judge_embed,
             run_config=run_config,
+            raise_exceptions=False,
         )
     except Exception as exc:
         log.warning("ragas.evaluate failed: %s", exc)
